@@ -1,0 +1,19 @@
+Trial Balance as at 31/10/2026,,,
+Code,Account Name,Debit,Credit
+0030,Office Equipment,4500.00,
+1200,Barclays Current Account,12500.00,
+1210,HSBC Business Account,3200.00,
+2200,VAT Control,,850.00
+4000,Sales,,45000.00
+7100,Rent and Rates,6000.00,
+7200,Light and Heat,900.00,
+7400,Travel and Subsistence,1200.00,
+7402,Motor Expenses - Fuel,640.00,
+7500,Telephone and Internet,480.00,
+7504,Office Stationery,210.00,
+7600,Legal and Professional Fees,1500.00,
+7800,Building Repairs and Maintenance,950.00,
+7804,Computer Maintenance and Software,1100.00,
+7900,Bank Charges,85.00,
+8200,Entertainment,420.00,
+9999,Suspense Account,,

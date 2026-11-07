@@ -1,0 +1,475 @@
+<title>How Expense Coder Works</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a ledger sheet. One reading column; spreadsheet-style column letters and nominal codes are the visual motif. */
+:root {
+  --paper: #f6f8f8;
+  --sheet: #ffffff;
+  --ink: #17242b;
+  --ink-2: #4c5c64;
+  --rule: #d6dfe2;
+  --grid: #e9eff1;
+  --accent: #0f6b74;        /* ledger teal */
+  --accent-soft: #dcefef;
+  --good: #2f7d4f;  --good-soft: #e1f1e6;
+  --warn: #9a6a00;  --warn-soft: #fbf0d3;
+  --bad:  #b2412f;  --bad-soft:  #f8e1dc;
+  --display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f1619; --sheet: #162126; --ink: #e4ecef; --ink-2: #9db0b8;
+    --rule: #2b3a41; --grid: #1d2a30; --accent: #5cc2c9; --accent-soft: #163a3e;
+    --good: #6fcf97; --good-soft: #17352a; --warn: #e6b450; --warn-soft: #3a2f14;
+    --bad: #f08a76; --bad-soft: #3d201b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f1619; --sheet: #162126; --ink: #e4ecef; --ink-2: #9db0b8;
+  --rule: #2b3a41; --grid: #1d2a30; --accent: #5cc2c9; --accent-soft: #163a3e;
+  --good: #6fcf97; --good-soft: #17352a; --warn: #e6b450; --warn-soft: #3a2f14;
+  --bad: #f08a76; --bad-soft: #3d201b; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--body);
+  font-size: 16px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 64px;
+}
+.wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 72px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; color: var(--ink); }
+h1 { font-size: clamp(2.2rem, 6vw, 3.6rem); font-weight: 800; font-stretch: 80%; line-height: 1.02; letter-spacing: -0.01em; }
+h2 { font-size: clamp(1.5rem, 3.4vw, 2rem); font-weight: 700; font-stretch: 85%; line-height: 1.15; }
+h3 { font-size: 1.05rem; font-weight: 700; }
+p { margin: 0; max-width: 65ch; }
+.eyebrow { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.lede { color: var(--ink-2); font-size: 1.1rem; }
+section { display: grid; gap: 20px; min-width: 0; }
+.head { display: grid; gap: 8px; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+code { font-family: var(--mono); font-size: 0.9em; background: var(--grid); padding: 1px 5px; border-radius: 4px; }
+
+/* Hero */
+.hero { padding-top: 56px; display: grid; gap: 28px; }
+.hero-flow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: stretch; }
+.io { background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; padding: 18px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.io ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.io li { display: flex; gap: 10px; align-items: baseline; }
+.io li .tag { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-2); border: 1px solid var(--rule); border-radius: 4px; padding: 0 5px; flex: none; }
+.arrow-big { display: grid; place-items: center; color: var(--accent); font-family: var(--display); font-weight: 800; }
+.arrow-big svg { width: 48px; height: 48px; }
+.io.out { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.note { font-size: 0.85rem; color: var(--ink-2); }
+
+/* Spreadsheet */
+.sheet-scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--sheet); }
+table.sheet { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 0.88rem; }
+.sheet th, .sheet td { border-right: 1px solid var(--grid); border-bottom: 1px solid var(--grid); padding: 7px 10px; text-align: left; white-space: nowrap; }
+.sheet thead tr.letters th { background: var(--grid); color: var(--ink-2); font-family: var(--mono); font-weight: 500; text-align: center; font-size: 0.75rem; padding: 4px; }
+.sheet thead tr.names th { font-family: var(--body); font-weight: 600; font-size: 0.8rem; background: var(--sheet); border-bottom: 2px solid var(--rule); }
+.sheet td.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.sheet td.c { font-family: var(--mono); font-weight: 600; }
+.sheet .rownum { background: var(--grid); color: var(--ink-2); font-family: var(--mono); font-size: 0.72rem; text-align: center; width: 34px; }
+.sheet .core { background: var(--accent-soft); }
+.sheet tr.review td:not(.rownum) { background: var(--warn-soft); }
+.sheet tr.billonly td:not(.rownum) { background: var(--bad-soft); }
+.sheet .extra { color: var(--ink-2); }
+.pill { display: inline-block; font-size: 0.72rem; font-weight: 600; padding: 1px 8px; border-radius: 99px; font-family: var(--body); }
+.p-high { background: var(--good-soft); color: var(--good); }
+.p-med { background: var(--accent-soft); color: var(--accent); }
+.p-low { background: var(--warn-soft); color: var(--warn); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 0.85rem; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--rule); display: inline-block; }
+
+/* Stepper */
+.stepper { background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; }
+.steps { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid var(--rule); }
+.steps button {
+  appearance: none; border: 0; background: transparent; color: var(--ink-2); font: inherit; cursor: pointer;
+  padding: 14px 10px; text-align: left; display: grid; gap: 2px; border-right: 1px solid var(--grid); min-width: 0;
+}
+.steps button:last-child { border-right: 0; }
+.steps button .k { font-family: var(--mono); font-size: 0.72rem; }
+.steps button .t { font-family: var(--display); font-weight: 700; font-size: 1.05rem; color: var(--ink); }
+.steps button[aria-selected="true"] { background: var(--accent-soft); box-shadow: inset 0 -3px 0 var(--accent); }
+.steps button[aria-selected="true"] .k { color: var(--accent); }
+.steps button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.panel { padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.panel .what { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.panel .what ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--ink-2); }
+.example { background: var(--paper); border: 1px dashed var(--rule); border-radius: 10px; padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.example .lbl { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 0.9rem; }
+.kv dt { color: var(--ink-2); }
+.kv dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+.receipt { font-family: var(--mono); font-size: 0.82rem; background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; line-height: 1.5; white-space: pre; overflow-x: auto; }
+.step-nav { display: flex; justify-content: space-between; padding: 0 24px 20px; gap: 12px; }
+.btn { appearance: none; font: inherit; font-size: 0.9rem; font-weight: 600; border: 1px solid var(--rule); background: var(--sheet); color: var(--ink); padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn[disabled] { opacity: 0.4; cursor: default; }
+
+/* Ladder */
+.ladder { display: grid; gap: 0; }
+.rung { display: grid; grid-template-columns: 64px 1fr auto; gap: 16px; align-items: center; padding: 16px 18px; background: var(--sheet); border: 1px solid var(--rule); }
+.rung:first-child { border-radius: 10px 10px 0 0; }
+.rung:last-child { border-radius: 0 0 10px 10px; }
+.rung + .rung { border-top: 0; }
+.rung .num { font-family: var(--display); font-weight: 800; font-size: 1.8rem; color: var(--accent); font-stretch: 80%; }
+.rung p { color: var(--ink-2); font-size: 0.92rem; }
+.fallthrough { font-family: var(--mono); font-size: 0.75rem; color: var(--ink-2); padding: 6px 18px 6px 98px; background: var(--grid); border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); }
+
+/* Architecture */
+.arch { display: grid; gap: 14px; }
+.zone { border-radius: 12px; padding: 18px; display: grid; gap: 14px; }
+.zone.cloud { background: var(--sheet); border: 1px solid var(--rule); }
+.zone.browser { background: var(--accent-soft); border: 2px dashed var(--accent); }
+.zone .zt { font-family: var(--display); font-weight: 700; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.zone .zt small { font-family: var(--body); font-weight: 400; color: var(--ink-2); font-size: 0.85rem; }
+.chain { display: flex; align-items: stretch; gap: 0; flex-wrap: nowrap; }
+.node { flex: 1; min-width: 0; background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; display: grid; gap: 2px; }
+.node b { font-family: var(--display); font-weight: 700; }
+.node span { font-size: 0.82rem; color: var(--ink-2); }
+.node.key { border: 2px solid var(--accent); }
+.link { flex: none; width: 28px; display: grid; place-items: center; color: var(--ink-2); }
+.link svg { width: 18px; height: 18px; }
+.down { display: flex; justify-content: flex-end; padding-right: 12%; color: var(--ink-2); font-size: 0.8rem; gap: 8px; align-items: center; }
+.rules-row { display: flex; justify-content: center; }
+.rules-row .node { max-width: 360px; text-align: center; }
+.never { display: flex; flex-wrap: wrap; gap: 8px; }
+.never span { font-size: 0.82rem; border: 1px solid var(--rule); background: var(--sheet); border-radius: 99px; padding: 3px 10px; color: var(--ink-2); }
+.never span s { color: var(--bad); text-decoration-thickness: 2px; }
+
+/* Two columns */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.card { background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; padding: 20px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.card ol { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.card ol li::marker { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+.once { font-family: var(--mono); font-size: 0.7rem; color: var(--warn); border: 1px solid currentColor; border-radius: 4px; padding: 0 5px; margin-left: 6px; }
+
+/* Targets */
+.targets { display: grid; gap: 0; background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.target { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 120px; gap: 16px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--grid); }
+.target:last-child { border-bottom: 0; }
+.target .bar { height: 10px; background: var(--grid); border-radius: 99px; position: relative; overflow: hidden; }
+.target .bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 99px; }
+.target .bar i.later { background: transparent; border: 2px solid var(--accent); border-left: 0; }
+.target .val { font-family: var(--mono); font-weight: 600; text-align: right; font-size: 0.9rem; }
+.target .what { font-size: 0.92rem; }
+
+/* Release */
+.release { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; counter-reset: r; }
+.phase { padding: 16px 18px 18px; border-top: 4px solid var(--rule); display: grid; gap: 6px; align-content: start; min-width: 0; }
+.phase.live { border-top-color: var(--accent); }
+.phase .k { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-2); }
+.phase h3 { font-size: 1.15rem; }
+.phase p { font-size: 0.9rem; color: var(--ink-2); }
+
+/* Questions */
+.qs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.q { background: var(--warn-soft); border-radius: 10px; padding: 16px 18px; display: grid; gap: 6px; }
+.q b { font-family: var(--display); font-weight: 700; }
+.q span { font-size: 0.9rem; color: var(--ink-2); }
+
+footer { font-size: 0.85rem; color: var(--ink-2); border-top: 1px solid var(--rule); padding-top: 16px; }
+a { color: var(--accent); }
+
+@media (max-width: 760px) {
+  .hero-flow { grid-template-columns: 1fr; }
+  .arrow-big svg { transform: rotate(90deg); width: 36px; height: 36px; }
+  .steps { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .steps button { padding: 10px 6px; }
+  .steps button .t { font-size: 0.85rem; }
+  .panel { grid-template-columns: 1fr; padding: 18px; }
+  .step-nav { padding: 0 18px 18px; }
+  .rung { grid-template-columns: 44px 1fr; }
+  .rung .pill { grid-column: 2; justify-self: start; }
+  .fallthrough { padding-left: 78px; }
+  .chain { flex-direction: column; }
+  .link { width: 100%; height: 22px; }
+  .link svg { transform: rotate(90deg); }
+  .down { justify-content: center; padding-right: 0; }
+  .cols, .qs { grid-template-columns: 1fr; }
+  .release { grid-template-columns: 1fr 1fr; }
+  .target { grid-template-columns: 1fr 70px; }
+  .target .bar { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .panel { animation: fade 0.25s ease; }
+  @keyframes fade { from { opacity: 0.4; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+}
+</style>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="head">
+      <div class="eyebrow">Expense Coder · web app plan</div>
+      <h1>Bank lines and bills in.<br>Coded expenses out.</h1>
+      <p class="lede">A low-cost web app that reads a client's bank statements and scanned bills, picks the expense account for each payment, and hands back a sheet ready to import into Sage or QuickBooks. The bookkeeper only checks the rows it is unsure about.</p>
+    </div>
+    <div class="hero-flow">
+      <div class="io">
+        <h3>You upload</h3>
+        <ul>
+          <li><span class="tag">once</span> Trial balance (chart of accounts)</li>
+          <li><span class="tag">.csv</span> Bank statements, one per bank account</li>
+          <li><span class="tag">.jpg .pdf</span> Scanned expense bills</li>
+        </ul>
+      </div>
+      <div class="arrow-big" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 24h30M28 13l11 11-11 11"/></svg>
+      </div>
+      <div class="io out">
+        <h3>You download</h3>
+        <ul>
+          <li><span class="tag">.xlsx</span> Coded expenses in columns A to E</li>
+          <li><span class="tag">.csv</span> Sage 50 bank payment import</li>
+          <li><span class="tag">.csv</span> Journal import for Sage Accounting or QuickBooks</li>
+        </ul>
+      </div>
+    </div>
+  </header>
+
+  <section aria-labelledby="out-h">
+    <div class="head">
+      <div class="eyebrow">The result</div>
+      <h2 id="out-h">The sheet you get back</h2>
+      <p class="lede">Columns A to E are the layout you asked for. The extra columns explain each code so you can check it quickly. Example rows from the October test run.</p>
+    </div>
+    <div class="sheet-scroll" tabindex="0" aria-label="Example output sheet">
+      <table class="sheet">
+        <thead>
+          <tr class="letters"><th></th><th class="core">A</th><th class="core">B</th><th class="core">C</th><th class="core">D</th><th class="core">E</th><th>F</th><th>G</th><th>H</th></tr>
+          <tr class="names"><th class="rownum">1</th><th>Date</th><th>Expense code</th><th>Bank code</th><th>Narrative</th><th>Amount £</th><th>Status</th><th>Confidence</th><th>Why this code</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="rownum">2</td><td class="mono">02/10/2026</td><td class="c">7400</td><td class="c">1200</td><td>UBER *TRIP LONDON</td><td class="n">45.60</td><td class="extra">Bank only</td><td><span class="pill p-med">Medium</span></td><td class="extra">Keyword: uber</td></tr>
+          <tr><td class="rownum">3</td><td class="mono">04/10/2026</td><td class="c">7402</td><td class="c">1210</td><td>Shell, M25 garage</td><td class="n">72.15</td><td class="extra">Matched to bill</td><td><span class="pill p-med">Medium</span></td><td class="extra">Keywords: diesel, shell</td></tr>
+          <tr><td class="rownum">4</td><td class="mono">05/10/2026</td><td class="c">8200</td><td class="c">1200</td><td>Pizza Express, client lunch</td><td class="n">128.40</td><td class="extra">Matched to bill</td><td><span class="pill p-med">Medium</span></td><td class="extra">Keywords: lunch, food, wine</td></tr>
+          <tr class="review"><td class="rownum">5</td><td class="mono">08/10/2026</td><td class="c">7800</td><td class="c">1200</td><td>J Smith Plumbing, pipe repair</td><td class="n">350.00</td><td class="extra">Matched to bill</td><td><span class="pill p-low">Low</span></td><td class="extra">"repair" fits 7800 and 7804</td></tr>
+          <tr><td class="rownum">6</td><td class="mono">12/10/2026</td><td class="c">7500</td><td class="c">1200</td><td>VODAFONE LTD</td><td class="n">62.99</td><td class="extra">Bank only</td><td><span class="pill p-med">Medium</span></td><td class="extra">Keyword: vodafone</td></tr>
+          <tr class="review"><td class="rownum">7</td><td class="mono">18/10/2026</td><td class="c">9999</td><td class="c">1210</td><td>UNKNOWN PAYEE 88213</td><td class="n">99.00</td><td class="extra">Bank only</td><td><span class="pill p-low">Low</span></td><td class="extra">No rule matched, you choose</td></tr>
+          <tr><td class="rownum">8</td><td class="mono">24/10/2026</td><td class="c">7804</td><td class="c">1200</td><td>TechFix, laptop repair</td><td class="n">219.00</td><td class="extra">Matched to bill</td><td><span class="pill p-med">Medium</span></td><td class="extra">Keywords: laptop, software</td></tr>
+          <tr class="billonly"><td class="rownum">9</td><td class="mono">28/10/2026</td><td class="c">7400</td><td class="c">?</td><td>City Cabs, taxi</td><td class="n">18.00</td><td class="extra">Bill only</td><td><span class="pill p-low">Low</span></td><td class="extra">No bank payment: cash or card?</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--accent-soft)"></i>Columns A–E: your import layout</span>
+      <span><i class="sw" style="background:var(--warn-soft)"></i>Check this code</span>
+      <span><i class="sw" style="background:var(--bad-soft)"></i>Bill with no bank payment</span>
+    </div>
+  </section>
+
+  <section aria-labelledby="walk-h">
+    <div class="head">
+      <div class="eyebrow">Five steps</div>
+      <h2 id="walk-h">Follow one bill through the app</h2>
+      <p class="lede">The Pizza Express bill from 5 October, step by step. Click a step or use Next.</p>
+    </div>
+    <div class="stepper">
+      <div class="steps" role="tablist" aria-label="Processing steps" id="steps"></div>
+      <div class="panel" role="tabpanel" id="panel" aria-live="polite"></div>
+      <div class="step-nav">
+        <button class="btn" id="prev" type="button">← Previous</button>
+        <button class="btn" id="next" type="button">Next →</button>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="ladder-h">
+    <div class="head">
+      <div class="eyebrow">Choosing the code</div>
+      <h2 id="ladder-h">Four checks, in order. The first one that fits wins.</h2>
+      <p class="lede">Your own corrections always beat the app's guesses. When nothing fits, the row goes to Suspense for you to decide.</p>
+    </div>
+    <div class="ladder">
+      <div class="rung"><div class="num">1</div><div><h3>Your vendor rules</h3><p>Corrections you made in past months. "TechFix" was coded 7804 last time, so it is 7804 again.</p></div><span class="pill p-high">High</span></div>
+      <div class="fallthrough">no vendor rule ↓</div>
+      <div class="rung"><div class="num">2</div><div><h3>Keywords</h3><p>Words on the bank line or the bill, matched to each account's keyword list. "diesel" → 7402 Motor Expenses. Two accounts tied → flagged.</p></div><span class="pill p-med">Medium or Low</span></div>
+      <div class="fallthrough">no keyword ↓</div>
+      <div class="rung"><div class="num">3</div><div><h3>Claude Haiku, via Roar AI</h3><p>The bank line and bill text go to Haiku with your list of expense accounts. It picks one and says why. Only these leftover rows are sent.</p></div><span class="pill p-med">Medium</span></div>
+      <div class="fallthrough">Haiku unsure ↓</div>
+      <div class="rung"><div class="num">4</div><div><h3>Suspense, for you to choose</h3><p>Code 9999, highlighted yellow. Pick the right account from a dropdown. The app saves your choice as a vendor rule for next month.</p></div><span class="pill p-low">Low</span></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="arch-h">
+    <div class="head">
+      <div class="eyebrow">Where your data goes</div>
+      <h2 id="arch-h">Only the bills leave your computer, and only to be read</h2>
+      <p class="lede">Cloudflare delivers the app and passes each bill to Claude Haiku through Roar AI. Bank statements, rules and results stay in your browser.</p>
+    </div>
+    <div class="arch">
+      <div class="zone cloud">
+        <div class="zt">Online <small>hosting and the AI relay</small></div>
+        <div class="chain">
+          <div class="node"><b>GitHub repo</b><span>the main branch is the live version</span></div>
+          <div class="link" aria-hidden="true"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 9h12M10 4l5 5-5 5"/></svg></div>
+          <div class="node"><b>Cloudflare Pages</b><span>serves the app and holds the Roar AI key; optional staff sign-in</span></div>
+          <div class="link" aria-hidden="true"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 9h12M10 4l5 5-5 5"/></svg></div>
+          <div class="node key"><b>Roar AI → Claude Haiku</b><span>reads bills, codes leftover rows; spend cap on the key</span></div>
+        </div>
+      </div>
+      <div class="down" aria-hidden="true">↓ the app loads in your browser</div>
+      <div class="zone browser">
+        <div class="zt">Your browser <small>bank CSVs, rules and results stay here</small></div>
+        <div class="chain">
+          <div class="node"><b>Read</b><span>CSV, Excel; bills via Haiku</span></div>
+          <div class="link" aria-hidden="true"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 9h12M10 4l5 5-5 5"/></svg></div>
+          <div class="node"><b>Match</b><span>bill to bank payment</span></div>
+          <div class="link" aria-hidden="true"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 9h12M10 4l5 5-5 5"/></svg></div>
+          <div class="node"><b>Code</b><span>rules, keywords, then Haiku</span></div>
+          <div class="link" aria-hidden="true"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 9h12M10 4l5 5-5 5"/></svg></div>
+          <div class="node"><b>Review</b><span>fix flagged rows</span></div>
+          <div class="link" aria-hidden="true"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 9h12M10 4l5 5-5 5"/></svg></div>
+          <div class="node"><b>Export</b><span>Excel and import files</span></div>
+        </div>
+        <div class="rules-row"><div class="node"><b>Saved client rules</b><span>kept in this browser, plus a rules file you can back up</span></div></div>
+      </div>
+      <div class="never"><span><s>No database</s></span><span><s>No client files stored online</s></span><span><s>No subscription</s></span></div>
+    </div>
+    <p class="note">Cost with <code>claude-haiku-4-5</code> on Roar AI: about $3.80 per 1,000 bills, or roughly 40 cents a month for a client with 100 bills. This is an estimate from Roar's published batch rates; a newer Haiku, if Roar offers it, would cost less.</p>
+  </section>
+
+  <section aria-labelledby="month-h">
+    <div class="head">
+      <div class="eyebrow">For the bookkeeper</div>
+      <h2 id="month-h">What a month looks like</h2>
+    </div>
+    <div class="cols">
+      <div class="card">
+        <h3>Set up a client <span class="once">once</span></h3>
+        <ol>
+          <li>Add the client in the app.</li>
+          <li>Upload the trial balance.</li>
+          <li>Confirm which accounts are expenses and which are banks.</li>
+          <li>Check the keyword list for each expense account.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>Every month, about 20 minutes</h3>
+        <ol>
+          <li>Drop in the bank CSVs and the bill scans.</li>
+          <li>Review the yellow and red rows; change codes from the dropdown.</li>
+          <li>Download the Excel and the import file.</li>
+          <li>Import into Sage or QuickBooks.</li>
+          <li>Export the rules file as a backup.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="done-h">
+    <div class="head">
+      <div class="eyebrow">Acceptance</div>
+      <h2 id="done-h">How we know version 1 works</h2>
+      <p class="lede">One real month for one real client must meet these targets.</p>
+    </div>
+    <div class="targets">
+      <div class="target"><div class="what">Bank payments read from each CSV</div><div class="bar"><i style="width:100%"></i></div><div class="val">100%</div></div>
+      <div class="target"><div class="what">Bills matched to the right payment</div><div class="bar"><i style="width:95%"></i></div><div class="val">≥ 95%</div></div>
+      <div class="target"><div class="what">Bills read correctly (clear scans)</div><div class="bar"><i style="width:85%"></i></div><div class="val">≥ 85%</div></div>
+      <div class="target"><div class="what">Right code with no correction</div><div class="bar"><i style="width:70%"></i><i class="later" style="left:70%;width:15%"></i></div><div class="val">70% → 85%</div></div>
+      <div class="target"><div class="what">Wrong codes marked High confidence</div><div class="bar"><i style="width:2%"></i></div><div class="val">&lt; 2%</div></div>
+    </div>
+    <p class="note">Also required: the import file loads into Sage or QuickBooks with no errors, the Excel total equals the bank payments total, and no client data shows in the browser's network log. The correct-code target rises from 70% in month 1 to 85% by month 3 as vendor rules build up.</p>
+  </section>
+
+  <section aria-labelledby="rel-h">
+    <div class="head">
+      <div class="eyebrow">Release plan</div>
+      <h2 id="rel-h">From pull request to production</h2>
+    </div>
+    <div class="release">
+      <div class="phase"><span class="k">Phase 1</span><h3>Build</h3><p>Browser version on a branch, opened as a pull request. Cloudflare gives it a preview link.</p></div>
+      <div class="phase"><span class="k">Phase 2</span><h3>Test</h3><p>One real month for one client on the preview link, checked against the targets.</p></div>
+      <div class="phase live"><span class="k">Phase 3</span><h3>Go live</h3><p>Merge into main. Cloudflare publishes it as the production site.</p></div>
+      <div class="phase"><span class="k">Phase 4</span><h3>Widen</h3><p>Add clients one at a time and track the correction rate each month.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="q-h">
+    <div class="head">
+      <div class="eyebrow">Before we build</div>
+      <h2 id="q-h">Six answers needed</h2>
+    </div>
+    <div class="qs">
+      <div class="q"><b>Roar AI and client data</b><span>Do client agreements allow bills to go to Roar AI? Its docs don't say how long requests are kept, so ask Roar in writing.</span></div>
+      <div class="q"><b>Roar AI account</b><span>Who owns the workspace and pays the bill? Is a newer Haiku than claude-haiku-4-5 on its model list?</span></div>
+      <div class="q"><b>Which Sage?</b><span>Sage 50, Sage Accounting (cloud), or both. Each has its own import layout.</span></div>
+      <div class="q"><b>VAT</b><span>Do these clients reclaim VAT? If so, should the app split net and VAT on each bill?</span></div>
+      <div class="q"><b>Sign-in</b><span>Put the site behind a staff sign-in, or open to anyone with the link?</span></div>
+      <div class="q"><b>Web address</b><span>A free pages.dev address, or the practice's own domain?</span></div>
+    </div>
+  </section>
+
+  <footer>Based on the Expense Coder Web App PRD, 7 November 2026. Example figures come from the sample test data, not a real client.</footer>
+</div>
+
+<script>
+const STEPS = [
+  { k: "Step 1", t: "Read",
+    what: "The app reads every file you dropped in. Bank CSVs are read in your browser for dates, descriptions and amounts paid out. Each bill is sent to Claude Haiku through Roar AI, which returns the vendor, date, total and VAT.",
+    points: ["Money coming in is ignored", "Title lines above the CSV header are skipped", "Each CSV is tied to its bank code, e.g. 1200 Barclays"],
+    ex: { lbl: "What Haiku reads from the bill", receipt: "PIZZA EXPRESS\nSoho, London\nDate: 05/10/2026\nClient lunch - 3 covers\nFood         98.00\nWine         30.40\nTOTAL       128.40" } },
+  { k: "Step 2", t: "Match",
+    what: "Each bill is paired with one bank payment of the same amount, dated within 10 days. The nearest date wins.",
+    points: ["Bill with no payment → red row (paid by cash or card?)", "Payment with no bill → still coded from the bank line", "One payment is never used twice"],
+    ex: { lbl: "Match found", kv: [["Bill total", "£128.40 on 05/10"], ["Bank line", "PIZZA EXPRESS SOHO"], ["Bank amount", "£128.40 on 05/10"], ["Bank code", "1200 Barclays"], ["Result", "Matched to bill"]] } },
+  { k: "Step 3", t: "Code",
+    what: "The app reads the bank line and the bill text together, then runs the three checks: your vendor rules, keywords, then Suspense.",
+    points: ["No vendor rule for Pizza Express yet", "Keywords lunch, food, pizza, wine all point to Entertainment", "No tie, so confidence is Medium"],
+    ex: { lbl: "Code chosen", kv: [["Expense code", "8200 Entertainment"], ["Confidence", "Medium"], ["Why", "Keywords: lunch, food, pizza, wine"]] } },
+  { k: "Step 4", t: "Review",
+    what: "You look over the sheet. Yellow rows need a decision; the rest you can scan. Click a row to see its bill image beside it.",
+    points: ["This row is fine, so leave it", "If you change a code, the app saves 'pizza express' → your code as a vendor rule", "Next month that rule gives High confidence"],
+    ex: { lbl: "Your decision", kv: [["Row", "05/10 Pizza Express £128.40"], ["Code", "8200 kept"], ["Rule saved", "only if you change it"]] } },
+  { k: "Step 5", t: "Export",
+    what: "Download the Excel in the A to E layout, plus an import file in the format your accounting software expects.",
+    points: ["Sage 50: one bank payment (type BP) per row", "Sage Accounting and QuickBooks: a debit and a credit line per payment", "Warning if the bank feed is also live, to avoid double counting"],
+    ex: { lbl: "Sage 50 import row", kv: [["Type", "BP"], ["Account Reference", "1200"], ["Nominal A/C Ref", "8200"], ["Date", "05/10/2026"], ["Details", "Pizza Express, client lunch"], ["Net Amount", "128.40"], ["Tax Code", "T9"]] } }
+];
+let cur = 0;
+const stepsEl = document.getElementById("steps");
+const panel = document.getElementById("panel");
+const prev = document.getElementById("prev");
+const next = document.getElementById("next");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+STEPS.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.id = "step-" + i; b.setAttribute("role", "tab");
+  b.innerHTML = `<span class="k">${s.k}</span><span class="t">${s.t}</span>`;
+  b.addEventListener("click", () => show(i));
+  stepsEl.appendChild(b);
+});
+stepsEl.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") { show(Math.min(cur + 1, STEPS.length - 1)); stepsEl.children[cur].focus(); }
+  if (e.key === "ArrowLeft") { show(Math.max(cur - 1, 0)); stepsEl.children[cur].focus(); }
+});
+function show(i) {
+  cur = i;
+  [...stepsEl.children].forEach((b, j) => { b.setAttribute("aria-selected", j === i ? "true" : "false"); b.tabIndex = j === i ? 0 : -1; });
+  const s = STEPS[i];
+  const ex = s.ex.receipt
+    ? `<div class="receipt">${esc(s.ex.receipt)}</div>`
+    : `<dl class="kv">${s.ex.kv.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+  panel.setAttribute("aria-labelledby", "step-" + i);
+  panel.innerHTML = `<div class="what"><h3>${esc(s.t)}</h3><p>${esc(s.what)}</p><ul>${s.points.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>
+    <div class="example"><span class="lbl">${esc(s.ex.lbl)}</span>${ex}</div>`;
+  prev.disabled = i === 0;
+  next.disabled = i === STEPS.length - 1;
+}
+prev.addEventListener("click", () => show(Math.max(cur - 1, 0)));
+next.addEventListener("click", () => show(Math.min(cur + 1, STEPS.length - 1)));
+show(0);
+</script>

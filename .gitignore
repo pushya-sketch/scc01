@@ -1,0 +1,11 @@
+# Real client data and results must never be uploaded
+input/
+output/
+rules.xlsx
+*.xlsx
+*.csv
+!sample/**/*.csv
+
+# Python
+__pycache__/
+*.pyc
